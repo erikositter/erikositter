@@ -1,0 +1,160 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {uid}
+    // Fields:
+    //   - uid: string (required)
+    //   - email: string (required)
+    //   - displayName: string (required)
+    //   - role: string (required, ['parent', 'sitter'])
+    //   - createdAt: string (required, ISO 8601)
+    //
+    // Collection: contracts
+    // Document ID: {contractId}
+    // Fields:
+    //   - parentId: string (required)
+    //   - sitterId: string (required)
+    //   - status: string (required, ['pending', 'active', 'completed'])
+    //   - content: string (required)
+    //   - createdAt: string (required, ISO 8601)
+    //
+    // Collection: activityReports
+    // Document ID: {reportId}
+    // Fields:
+    //   - contractId: string (required)
+    //   - sitterId: string (required)
+    //   - parentId: string (required)
+    //   - date: string (required, YYYY-MM-DD)
+    //   - activities: string (required)
+    //   - meals: string (optional)
+    //   - mood: string (required)
+    //   - createdAt: string (required, ISO 8601)
+    //
+    // Collection: napChecks
+    // Document ID: {checkId}
+    // Fields:
+    //   - contractId: string (required)
+    //   - sitterId: string (required)
+    //   - parentId: string (required)
+    //   - date: string (required, YYYY-MM-DD)
+    //   - checks: list (required, items: {time, status, note})
+    //   - createdAt: string (required, ISO 8601)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "erikoeriko0001@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}$");
+    }
+
+    function isValidISO8601(dateStr) {
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasRequiredFields(['uid', 'email', 'displayName', 'role', 'createdAt']) &&
+             hasOnlyAllowedFields(['uid', 'email', 'displayName', 'role', 'createdAt']) &&
+             data.uid == request.auth.uid &&
+             data.email == request.auth.token.email &&
+             data.role in ['parent', 'sitter'] &&
+             isValidEmail(data.email) &&
+             isValidISO8601(data.createdAt);
+    }
+
+    function isValidContract(data) {
+      return hasRequiredFields(['parentId', 'sitterId', 'status', 'content', 'createdAt']) &&
+             hasOnlyAllowedFields(['parentId', 'sitterId', 'status', 'childProfile', 'content', 'createdAt']) &&
+             data.status in ['pending', 'active', 'completed'] &&
+             isValidISO8601(data.createdAt);
+    }
+
+    function isValidActivityReport(data) {
+      return hasRequiredFields(['contractId', 'sitterId', 'parentId', 'date', 'timeline', 'mood', 'createdAt']) &&
+             hasOnlyAllowedFields(['contractId', 'sitterId', 'parentId', 'date', 'timeline', 'summary', 'mood', 'createdAt']) &&
+             data.sitterId == request.auth.uid &&
+             isValidDateString(data.date) &&
+             isValidISO8601(data.createdAt) &&
+             data.timeline is list && data.timeline.size() < 50;
+    }
+
+    function isValidNapCheck(data) {
+      return hasRequiredFields(['contractId', 'sitterId', 'parentId', 'date', 'checks', 'createdAt']) &&
+             hasOnlyAllowedFields(['contractId', 'sitterId', 'parentId', 'date', 'checks', 'createdAt']) &&
+             data.sitterId == request.auth.uid &&
+             isValidDateString(data.date) &&
+             isValidISO8601(data.createdAt) &&
+             data.checks is list && data.checks.size() < 200;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data);
+    }
+
+    match /contracts/{contractId} {
+      allow read: if isAuthenticated() && (request.auth.uid == resource.data.parentId || request.auth.uid == resource.data.sitterId || isAdmin());
+      allow create: if isAuthenticated() && isValidContract(request.resource.data) && request.resource.data.sitterId == request.auth.uid;
+      allow update: if isAuthenticated() && (request.auth.uid == resource.data.parentId || request.auth.uid == resource.data.sitterId || isAdmin()) && isValidContract(request.resource.data);
+    }
+
+    match /activityReports/{reportId} {
+      allow read: if isAuthenticated() && (request.auth.uid == resource.data.parentId || request.auth.uid == resource.data.sitterId || isAdmin());
+      allow create: if isAuthenticated() && isValidActivityReport(request.resource.data);
+      allow update: if isAuthenticated() && (request.auth.uid == resource.data.sitterId || isAdmin()) && isValidActivityReport(request.resource.data);
+    }
+
+    match /napChecks/{checkId} {
+      allow read: if isAuthenticated() && (request.auth.uid == resource.data.parentId || request.auth.uid == resource.data.sitterId || isAdmin());
+      allow create: if isAuthenticated() && isValidNapCheck(request.resource.data);
+      allow update: if isAuthenticated() && (request.auth.uid == resource.data.sitterId || isAdmin()) && isValidNapCheck(request.resource.data);
+    }
+
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}

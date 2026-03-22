@@ -1,0 +1,108 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "App user (Parent or Sitter)",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["parent", "sitter"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Contract": {
+      "title": "Contract",
+      "description": "Service agreement between parent and sitter",
+      "type": "object",
+      "properties": {
+        "parentId": { "type": "string" },
+        "sitterId": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "active", "completed"] },
+        "childProfile": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "birthday": { "type": "string", "format": "date" },
+            "gender": { "type": "string", "enum": ["男の子", "女の子", "その他"] },
+            "allergies": { "type": "string" },
+            "notes": { "type": "string" }
+          }
+        },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["parentId", "sitterId", "status"]
+    },
+    "ActivityReport": {
+      "title": "Activity Report",
+      "description": "Daily report of childcare activities with timeline",
+      "type": "object",
+      "properties": {
+        "contractId": { "type": "string" },
+        "sitterId": { "type": "string" },
+        "parentId": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "timeline": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "time": { "type": "string", "format": "time" },
+              "content": { "type": "string" },
+              "type": { "type": "string", "enum": ["activity", "meal", "sleep", "other"] }
+            }
+          }
+        },
+        "summary": { "type": "string" },
+        "mood": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["contractId", "sitterId", "parentId", "date", "timeline"]
+    },
+    "NapCheck": {
+      "title": "Nap Check",
+      "description": "Real-time nap monitoring logs",
+      "type": "object",
+      "properties": {
+        "contractId": { "type": "string" },
+        "sitterId": { "type": "string" },
+        "parentId": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "time": { "type": "string", "format": "time" },
+              "position": { "type": "string", "enum": ["仰向け", "うつ伏せ", "右向き", "左向き"] },
+              "note": { "type": "string" }
+            }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["contractId", "sitterId", "parentId", "date"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/contracts/{contractId}": {
+      "schema": "Contract",
+      "description": "Service contracts"
+    },
+    "/activityReports/{reportId}": {
+      "schema": "ActivityReport",
+      "description": "Daily reports"
+    },
+    "/napChecks/{checkId}": {
+      "schema": "NapCheck",
+      "description": "Nap monitoring data"
+    }
+  }
+}
